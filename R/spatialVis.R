@@ -17,8 +17,6 @@ spatialVis <- function() {
                 shiny::selectInput("seuratObjSelection",
                                    "Select Spatial Object",
                                    choices = "Please Refresh")
-                # select features
-                # select metadata
               ),
               # select spatial FOV
               miniUI::miniContentPanel(
@@ -31,7 +29,6 @@ spatialVis <- function() {
                                       "Select Feature or Metadata",
                                       choices = "Please Refresh")
               )
-
             ),
             # main plot
             miniUI::miniContentPanel(
@@ -130,91 +127,91 @@ spatialVis <- function() {
         # feature data
         # will have give layer selection choice...
         if(input$seuratFeatureSelection %in% genes ||
-           input$seuratFeatureSelection %in% meta.data) {
-        if(input$seuratFeatureSelection %in% genes) {
-          seuratMetadata[input$seuratFeatureSelection] <-
-            SeuratObject::LayerData(seuratObj(),
-                          assay = "Spatial",
-                          layer = "counts")[input$seuratFeatureSelection,]
-        } else if (input$seuratFeatureSelection %in% meta.data) {
-          seuratMetadata[input$seuratFeatureSelection] <-
+             input$seuratFeatureSelection %in% meta.data) {
+          if(input$seuratFeatureSelection %in% genes) {
+            seuratMetadata[input$seuratFeatureSelection] <-
+              SeuratObject::LayerData(seuratObj(),
+                            assay = "Spatial",
+                            layer = "counts")[input$seuratFeatureSelection,]
+          } else if (input$seuratFeatureSelection %in% meta.data) {
+            seuratMetadata[input$seuratFeatureSelection] <-
             seuratObj()@meta.data[,input$seuratFeatureSelection]
-        }
+          }
 
-        # plotly config
-        fig <- plotly::plot_ly(data = seuratMetadata,
-                               x= ~x,
-                               y = ~y,
-                               text = ~paste0("Cell ID: ", cell_ids,
-                                              "\n",
-                                              "Value: ",
-                                              get(input$seuratFeatureSelection)),
-                               color = ~get(input$seuratFeatureSelection),
-                               type = "scatter",
-                               mode = "markers",
-                               marker = list(size = marker_size,
-                                             sizemin = marker_size*10))
+          # plotly config
+          fig <- plotly::plot_ly(data = seuratMetadata,
+                                 x= ~x,
+                                 y = ~y,
+                                 text = ~paste0("Cell ID: ", cell_ids,
+                                                "\n",
+                                                "Value: ",
+                                                get(input$seuratFeatureSelection)),
+                                 color = ~get(input$seuratFeatureSelection),
+                                 type = "scatter",
+                                 mode = "markers",
+                                 marker = list(size = marker_size,
+                                               sizemin = marker_size*10))
 
-        # axis config
-        # tick labels break
-        xconfig <- list(
-          title = "",
-          zeroline = FALSE,
-          showline = FALSE,
-          showticklabels = FALSE,
-          showgrid = FALSE,
-          range = c(0, img_width)
-        )
+          # axis config
+          # tick labels break
+          xconfig <- list(
+            title = "",
+            zeroline = FALSE,
+            showline = FALSE,
+            showticklabels = FALSE,
+            showgrid = FALSE,
+            range = c(0, img_width)
+          )
 
-        yconfig <- list(
-          title = "",
-          zeroline = FALSE,
-          showline = FALSE,
-          showticklabels = FALSE,
-          showgrid = FALSE,
-          range = c(0, img_height),
-          scaleanchor="x"
-        )
-        fig <- fig |> plotly::layout(xaxis = xconfig, yaxis = yconfig)
+          yconfig <- list(
+            title = "",
+            zeroline = FALSE,
+            showline = FALSE,
+            showticklabels = FALSE,
+            showgrid = FALSE,
+            range = c(0, img_height),
+            scaleanchor="x"
+          )
+          fig <- fig |> plotly::layout(xaxis = xconfig, yaxis = yconfig)
 
-        # add image
-        fig <- fig |>
-          plotly::layout(
-            images = list(
-              list(
-                source = txt_img,
-                xref = "x",
-                yref = "y",
-                x = 0,
-                sizex=img_width,
-                y=img_height,
-                sizey=img_height,
-                layer="below",
-                sizing="stretch"
-              )
-            ),
-            dragmode = "pan"
-          ) |>
-          plotly::config(scrollZoom=TRUE)
-
-        # define legend
-        if(is.numeric(unlist(seuratMetadata[input$seuratFeatureSelection]))) {
-          fig <- fig |>
-            plotly::colorbar(title = input$seuratFeatureSelection)
-        } else {
+          # add image
           fig <- fig |>
             plotly::layout(
-              legend = list(
-                title = list(
-                  text = input$seuratFeatureSelection)
+              images = list(
+                list(
+                  source = txt_img,
+                  xref = "x",
+                  yref = "y",
+                  x = 0,
+                  sizex=img_width,
+                  y=img_height,
+                  sizey=img_height,
+                  layer="below",
+                  sizing="stretch"
                 )
-              )
-        }
+              ),
+              dragmode = "pan"
+            ) |>
+            plotly::config(scrollZoom=TRUE)
 
-        # output
-        output$plot <- plotly::renderPlotly(
-          fig
-        )
+          # define legend
+          if(is.numeric(unlist(seuratMetadata[input$seuratFeatureSelection]))) {
+            fig <- fig |>
+              plotly::colorbar(title = input$seuratFeatureSelection)
+          } else {
+            fig <- fig |>
+              plotly::layout(
+                legend = list(
+                  title = list(
+                    text = input$seuratFeatureSelection)
+                  )
+                )
+          }
+
+          # output
+          output$plot <- plotly::renderPlotly(
+            fig
+          )
         } else {
           # do nothing if selected feature not in
         }
