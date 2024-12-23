@@ -1,0 +1,4 @@
+Name: rSpatialVis
+Description: A shiny visualizer for spatial objects.
+Binding: spatialVis
+Interactive: true
