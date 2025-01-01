@@ -4,14 +4,15 @@
 
 spatialVis <- function() {
   ui <- miniUI::miniPage(
-    miniUI::gadgetTitleBar("Visium Visualization"),
+    # make title dynamic with textOutput and inline = TRUE
+    miniUI::gadgetTitleBar(title = "Visium Visualization",
+                           left = miniUI::miniTitleBarButton("refreshSeuratObj",
+                                                     "Refresh"),
+                           right = miniUI::miniTitleBarButton("done",
+                                                      "Done")),
     shiny::fillRow(flex = c(1,4),
             # controls sidebar
-            shiny::fillCol(flex=c(1,2,2,9),height="800px",
-              # select and refresh button (too much work to put next to selection)
-              miniUI::miniContentPanel(
-                shiny::actionButton("refreshSeuratObj", "Refresh")
-              ),
+            shiny::fillCol(flex=c(2,2,9),height="800px",
               # select Seurat object
               miniUI::miniContentPanel(
                 shiny::selectInput("seuratObjSelection",
