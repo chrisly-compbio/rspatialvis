@@ -12,7 +12,7 @@ spatialVis <- function() {
           shiny::actionButton("refreshSeuratObj",
                               "Refresh"),
           shiny::actionButton("done",
-                              "Done")
+                              "Exit")
         ),
         bslib::accordion_panel(
           "Spot Properties",
@@ -24,8 +24,8 @@ spatialVis <- function() {
           shiny::sliderInput("spotSize",
                              "Spot size",
                              min = 1,
-                             max = 20, #check
-                             value = 6 )#check
+                             max = 30,
+                             value = 6 )
         ),
         bslib::accordion_panel(
           "Object Selection",
@@ -58,29 +58,37 @@ spatialVis <- function() {
 
   server <- function(input, output, session) {
     # reactive vars
-    seuratObj <- shiny::reactiveVal(NULL) # is it better to pull from global instead?
+    seuratObj <- shiny::reactiveVal(NULL)
     spatialImage <- shiny::reactiveVal(NULL)
     spatialObjVarsList <- shiny::reactiveVal(NULL)
 
-    alpha <- reactive({
+    alpha <- shiny::reactive({
       input$alpha
     })
-    spotSize <- reactive({
+    spotSize <- shiny::reactive({
       input$spotSize
     })
 
     # retrieve environment objects
     getSpatialObjs <- function() {
+      supportedObjs <- c("Seurat")
+
       objs <- ls(envir = .GlobalEnv)
-      seurat_objs <- data.frame(
+      spatialObjs <- data.frame(
         objName = objs,
         objClass = sapply(objs,
                           function(x) class(get(x, envir = .GlobalEnv))[1]),
         stringsAsFactors = FALSE
       )
-      seurat_objs <- seurat_objs[seurat_objs$objClass == "Seurat",]
-      seurat_objs <- seurat_objs$objName
-      return(seurat_objs)
+      # add names to display object name and class in selectInput()
+      spatialObjsVector <- spatialObjs$objName
+      names(spatialObjsVector) <- paste0(spatialObjs$objName,
+                                        " (",
+                                        spatialObjs$objClass,
+                                        ")")
+      idx <- spatialObjs$objClass %in% supportedObjs
+      spatialObjsVector <- spatialObjsVector[idx]
+      return(spatialObjsVector)
     }
 
     # spatial object selection logic
@@ -125,7 +133,8 @@ spatialVis <- function() {
       }
     })
 
-    spatialObjData <- reactive({
+    # build reactive dataframe with neccessary and selected features
+    spatialObjData <- shiny::reactive({
       genes <- rownames(seuratObj())
       meta.data <- colnames(seuratObj()@meta.data)
       cell_ids <- colnames(seuratObj())
@@ -137,7 +146,7 @@ spatialVis <- function() {
       seuratMetadata <- Seurat::GetTissueCoordinates(seuratObj(),
                                                      scale="lowres",
                                                      image = input$seuratFOVSelection)[,c("x","y")]
-      # rotate and flip coordinates
+      # rotate and flip xy coordinates
       colnames(seuratMetadata) <- c("y","x")
       seuratMetadata["y"] <- abs(seuratMetadata["y"]-img_height)
       # add data
@@ -154,12 +163,11 @@ spatialVis <- function() {
       return(seuratMetadata)
     })
 
-    # observe event or reactive?
-    image_txt <- reactive({
+    image_txt <- shiny::reactive({
       plotly::raster2uri(spatialImage())
     })
 
-    plot <- reactive({
+    plot <- shiny::reactive({
       # get variables
       img_width <- (methods::slot(seuratObj(),
                                   "images")[[input$seuratFOVSelection]]@image |>
@@ -194,13 +202,12 @@ spatialVis <- function() {
       mode = "markers",
       alpha = input$alpha,
       color = ~get(input$seuratFeatureSelection),
-      marker = list(size = spotSize(),
-                    text = ~paste0("Cell ID: ",
-                                   cell_ids,
-                                   "\n",
-                                   "Value: ",
-                                   get(input$seuratFeatureSelection))
-      )
+      marker = list(size = spotSize()),
+      text = ~paste0("Cell ID: ",
+                     cell_ids,
+                     "\n",
+                     "Value: ",
+                     get(input$seuratFeatureSelection))
       ) |>
       plotly::layout(
         xaxis = xconfig,
@@ -224,7 +231,7 @@ spatialVis <- function() {
       plotly::config(scrollZoom=TRUE)
     })
 
-
+    # update legend based on feature plotted
     output$plot <- plotly::renderPlotly({
       if(is.numeric(unlist(spatialObjData()[input$seuratFeatureSelection]))) {
         plot() |>
@@ -239,157 +246,6 @@ spatialVis <- function() {
           )
       }
     })
-
-
-
-#
-#     # old
-#     shiny::observeEvent(input$seuratObjSelection, {
-#       # get spatial FOVs
-#       # this could be made better
-#       seuratObj_val <- .GlobalEnv[[input$seuratObjSelection]]
-#       seuratObj(seuratObj_val)
-#       if(is.null(seuratObj_val)) {
-#         return()
-#       } else {
-#         shiny::updateSelectInput(session, "seuratFOVSelection",
-#                                  choices = names(methods::slot(seuratObj_val,
-#                                                                "images")))
-#       }
-#     })
-#
-#     # spatialFOV selected
-#     shiny::observeEvent(input$seuratFOVSelection, {
-#       if(is.null(seuratObj())){
-#         return()
-#       } else {
-#         spatialImage(magick::image_read(methods::slot(seuratObj(),
-#                                                       "images")[[input$seuratFOVSelection]]@image))
-#         seuratFeatures <- c(colnames(seuratObj()@meta.data),
-#                             rownames(seuratObj()))
-#         shiny::updateSelectizeInput(session, "seuratFeatureSelection",
-#                                     choices = seuratFeatures,
-#                                     server = TRUE)
-#       }
-#     })
-#
-#     # feature selected
-#     shiny::observeEvent(input$seuratFeatureSelection, {
-#       if(is.null(seuratObj())){
-#         return()
-#       } else {
-#         # get image vars
-#         img_width <- (methods::slot(seuratObj(),
-#                                     "images")[[input$seuratFOVSelection]]@image |>
-#                         dim())[2]
-#         img_height <- (methods::slot(seuratObj(),
-#                                      "images")[[input$seuratFOVSelection]]@image |>
-#                          dim())[1]
-#         txt_img <- plotly::raster2uri(spatialImage())
-#         genes <- rownames(seuratObj())
-#         cell_ids <- Seurat::Cells(seuratObj())
-#         meta.data <- colnames(seuratObj()@meta.data)
-#
-#         # get data
-#         seuratMetadata <- Seurat::GetTissueCoordinates(seuratObj(), scale="lowres")[,c("x","y")]
-#         colnames(seuratMetadata) <- c("y","x") # rotate?
-#         seuratMetadata["y"] <- abs(seuratMetadata["y"]-img_height) #flip
-#         seuratMetadata$cell_ids <- cell_ids
-#
-#         # feature data
-#         # will have give layer selection choice...
-#         if(input$seuratFeatureSelection %in% genes ||
-#              input$seuratFeatureSelection %in% meta.data) {
-#           if(input$seuratFeatureSelection %in% genes) {
-#             seuratMetadata[input$seuratFeatureSelection] <-
-#               SeuratObject::LayerData(seuratObj(),
-#                             assay = "Spatial",
-#                             layer = "counts")[input$seuratFeatureSelection,]
-#           } else if (input$seuratFeatureSelection %in% meta.data) {
-#             seuratMetadata[input$seuratFeatureSelection] <-
-#             seuratObj()@meta.data[,input$seuratFeatureSelection]
-#           }
-#
-#           # plotly config
-#           fig <- plotly::plot_ly(data = seuratMetadata,
-#                                  x= ~x,
-#                                  y = ~y,
-#                                  text = ~paste0("Cell ID: ", cell_ids,
-#                                                 "\n",
-#                                                 "Value: ",
-#                                                 get(input$seuratFeatureSelection)),
-#                                  color = ~get(input$seuratFeatureSelection),
-#                                  type = "scatter",
-#                                  mode = "markers",
-#                                  alpha = alpha(),
-#                                  marker = list(size = spotSize(),
-#                                                sizemin = 1))
-#
-#           # axis config
-#           # tick labels break
-#           xconfig <- list(
-#             title = "",
-#             zeroline = FALSE,
-#             showline = FALSE,
-#             showticklabels = FALSE,
-#             showgrid = FALSE,
-#             range = c(0, img_width)
-#           )
-#
-#           yconfig <- list(
-#             title = "",
-#             zeroline = FALSE,
-#             showline = FALSE,
-#             showticklabels = FALSE,
-#             showgrid = FALSE,
-#             range = c(0, img_height),
-#             scaleanchor="x"
-#           )
-#           fig <- fig |> plotly::layout(xaxis = xconfig, yaxis = yconfig)
-#
-#           # add image
-#           fig <- fig |>
-#             plotly::layout(
-#               images = list(
-#                 list(
-#                   source = txt_img,
-#                   xref = "x",
-#                   yref = "y",
-#                   x = 0,
-#                   sizex=img_width,
-#                   y=img_height,
-#                   sizey=img_height,
-#                   layer="below",
-#                   sizing="stretch"
-#                 )
-#               ),
-#               dragmode = "pan"
-#             ) |>
-#             plotly::config(scrollZoom=TRUE)
-#
-#           # define legend
-#           if(is.numeric(unlist(seuratMetadata[input$seuratFeatureSelection]))) {
-#             fig <- fig |>
-#               plotly::colorbar(title = input$seuratFeatureSelection)
-#           } else {
-#             fig <- fig |>
-#               plotly::layout(
-#                 legend = list(
-#                   title = list(
-#                     text = input$seuratFeatureSelection)
-#                   )
-#                 )
-#           }
-#
-#           # output
-#           output$plot <- plotly::renderPlotly(
-#             fig#() for reactive fig creation?
-#           )
-#         } else {
-#           # do nothing if selected feature not in
-#         }
-#       }
-#     })
 
     shiny::observeEvent(input$done, {
       shiny::stopApp()
