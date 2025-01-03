@@ -3,47 +3,72 @@
 #' @export
 
 spatialVis <- function() {
-  ui <- miniUI::miniPage(
-    # make title dynamic with textOutput and inline = TRUE
-    miniUI::gadgetTitleBar(title = "Visium Visualization",
-                           left = miniUI::miniTitleBarButton("refreshSeuratObj",
-                                                     "Refresh"),
-                           right = miniUI::miniTitleBarButton("done",
-                                                      "Done")),
-    shiny::fillRow(flex = c(1,4),
-            # controls sidebar
-            shiny::fillCol(flex=c(2,2,9),height="800px",
-              # select Seurat object
-              miniUI::miniContentPanel(
-                shiny::selectInput("seuratObjSelection",
-                                   "Select Spatial Object",
-                                   choices = "Please Refresh")
-              ),
-              # select spatial FOV
-              miniUI::miniContentPanel(
-                shiny::selectInput("seuratFOVSelection",
-                                   "Select Spatial FOV",
-                                   choices = "Please Refresh")
-              ),
-              miniUI::miniContentPanel(
-                shiny::selectizeInput("seuratFeatureSelection",
-                                      "Select Feature or Metadata",
-                                      choices = "Please Refresh")
-              )
-            ),
-            # main plot
-            miniUI::miniContentPanel(
-              plotly::plotlyOutput("plot",
-                                   width="100%",
-                                   height="100%")
-            )
+  ui <- bslib::page_sidebar(
+    title = "rSpatialVis",
+    sidebar = bslib::sidebar(
+      bslib::accordion(
+        bslib::accordion_panel(
+          "Refresh Objects",
+          shiny::actionButton("refreshSeuratObj",
+                              "Refresh"),
+          shiny::actionButton("done",
+                              "Done")
+        ),
+        bslib::accordion_panel(
+          "Spot Properties",
+          shiny::sliderInput("alpha",
+                             "Alpha",
+                             min = 0,
+                             max = 1,
+                             value = 1),
+          shiny::sliderInput("spotSize",
+                             "Spot size",
+                             min = 1,
+                             max = 100, #check
+                             value = 6 )#check
+        ),
+        bslib::accordion_panel(
+          "Object Selection",
+          shiny::selectInput("seuratObjSelection",
+                             "Select Spatial Object",
+                             choices = "Please Refresh"),
+          shiny::selectInput("seuratFOVSelection",
+                             "Select Spatial FOV",
+                             choices = "Please Refresh"),
+          # assay selection
+          shiny::selectizeInput("seuratFeatureSelection",
+                                "Select Feature or Metadata",
+                                choices = "Please Refresh")
+        )
+      )
+    ),
+  # main plot
+  bslib::card(
+    full_screen = TRUE,
+    bslib::card_body(
+      plotly::plotlyOutput("plot",
+                           width="100%",
+                           height="100%")
     )
   )
+  )
+
+
 
   server <- function(input, output, session) {
     # reactive vars
     seuratObj <- shiny::reactiveVal(NULL) # is it better to pull from global instead?
     spatialImage <- shiny::reactiveVal(NULL)
+    spatialObjVars <- shiny::reactiveVal(NULL)
+
+
+    alpha <- reactive({
+      input$alpha
+    })
+    spotSize <- reactive({
+      input$spotSize
+    })
+
 
     # retrieve environment objects
     getSpatialObjs <- function() {
@@ -61,12 +86,32 @@ spatialVis <- function() {
 
     # spatial object selection logic
     shiny::observeEvent(input$refreshSeuratObj, {
-
         shiny::updateSelectInput(session, "seuratObjSelection",
                           choices = getSpatialObjs())
     })
 
     # seurat object selected
+    # alt pathway
+    shiny::observeEvent(input$seuratObjSelection, {
+      seuratObj(.GlobalEnv[[input$seuratObjSelection]])
+      spatialObjVars <- list()
+
+      if(is.null(seuratObj_val)) {
+        return() # error cleanly
+      } else {
+        spatialObjVars[["images"]] <- names(methods::slot(seuratObj_val,
+                                                          "images"))
+
+
+
+      }
+
+    })
+
+
+
+
+
     shiny::observeEvent(input$seuratObjSelection, {
       # get spatial FOVs
       # this could be made better
@@ -112,12 +157,6 @@ spatialVis <- function() {
         genes <- rownames(seuratObj())
         cell_ids <- Seurat::Cells(seuratObj())
         meta.data <- colnames(seuratObj()@meta.data)
-        # this doesn't work
-        marker_size <-
-          methods::slot(seuratObj(),
-                        "images")[[input$seuratFOVSelection]]@scale.factors$lowres *
-          methods::slot(seuratObj(),
-                         "images")[[input$seuratFOVSelection]]@scale.factors$spot
 
         # get data
         seuratMetadata <- Seurat::GetTissueCoordinates(seuratObj(), scale="lowres")[,c("x","y")]
@@ -150,8 +189,9 @@ spatialVis <- function() {
                                  color = ~get(input$seuratFeatureSelection),
                                  type = "scatter",
                                  mode = "markers",
-                                 marker = list(size = marker_size,
-                                               sizemin = marker_size*10))
+                                 alpha = alpha(),
+                                 marker = list(size = spotSize(),
+                                               sizemin = 1))
 
           # axis config
           # tick labels break
@@ -211,7 +251,7 @@ spatialVis <- function() {
 
           # output
           output$plot <- plotly::renderPlotly(
-            fig
+            fig#() for reactive fig creation?
           )
         } else {
           # do nothing if selected feature not in
